@@ -25,10 +25,7 @@ def apply_ASR(data, parameters, info, original_data):
     #Scrap parameters
     cutoff_list = parameters['CUTOFF']
     wl_list = parameters['WL']
-    if isinstance(parameters['TRAINING_RAW_DICT'], dict):
-        training_raw_path = parameters['TRAINING_RAW_DICT'][info['sub']]
-    else:
-        training_raw_path = None
+    training_raw_path = parameters['TRAINING_RAW_DICT'][info['rec']]
     labels = parameters['LABELS']
     
     for cutoff in cutoff_list:
@@ -43,15 +40,10 @@ def apply_ASR(data, parameters, info, original_data):
 
             #Define data
             raw_data = raw_to_apply_ASR.get_data()
-
+            print(f'raw shape : {raw_data.shape}')
+            
             #Define training data
-            if isinstance(training_raw_path, str):
-                #In this case training raw must be minimally preprocessed
-                training_raw = mne.io.read_raw(training_raw_path, preload = True)
-            elif isinstance(training_raw_path, list):
-                training_raw = raw_to_apply_ASR.copy().crop(tmin=training_raw_path[0], tmax=training_raw_path[1])
-            else:
-                training_raw = define_ASR_training_raw(raw_to_apply_ASR)
+            training_raw = mne.io.read_raw(training_raw_path, preload = True)
             training_data = training_raw.get_data()
 
             #Define ASR
@@ -76,15 +68,22 @@ def apply_ASR(data, parameters, info, original_data):
             
             #Re-organize data
             clean_run = Y.reshape(raw_data.shape[0], -1)  # ensure the shape is correct
+            print(f'ASR shape : {clean_run.shape}')
             cleaned_raw = mne.io.RawArray(clean_run, data.info)
             cleaned_raw.set_annotations(data.annotations)
             
             if isinstance(data, mne.io.Raw) :
                 cleaned_data = cleaned_raw
             elif isinstance(data, mne.Epochs) :
-                label_name = info['extract'].replace('epochs_', '')
-                parameters = {'TMIN':data.tmin,'TMAX':data.tmax, 'PTP_THRESHOLD':None, 'REJECT_FLAT':False, 'LABELS': {label_name : labels[label_name]}}
-                cleaned_data_dict = _B_.subset_epoching(cleaned_raw, parameters, info = None)
+                info_copy = info.copy()
+                label_name = info_copy.pop('extract').replace('epochs_', '')
+                parameters = {'TMIN':data.tmin,
+                              'TMAX':data.tmax,
+                              'PTP_THRESHOLD':None,
+                              'REJECT_FLAT':False,
+                              'ADD_DF': True,
+                              'LABELS': {label_name : labels[label_name]}}
+                cleaned_data_dict = _B_.subset_epoching(cleaned_raw, parameters, info = info_copy)
                 cleaned_data = cleaned_data_dict[f'epochs_{label_name}']['no_cleaning']['no_analysis']['data']
 
             key = f'met-asr_cutoff-{cutoff}_wl-{wl}'
@@ -104,10 +103,14 @@ def apply_AUTOREJECT(data, parameters, info, original_data):
         for consensus_percs in consensus_percs_list:
             
             epochs = copy.deepcopy(data)
+
+            n_samples = len(epochs)
+            n_splits = min(n_samples, 10) 
             
             ar = AutoReject(
                 n_interpolates, 
                 consensus_percs,
+                cv = n_splits,
                 thresh_method='bayesian_optimization', 
                 random_state=42
             )
@@ -322,82 +325,4 @@ def define_ASR_training_raw(data):
 
 
 
-
-
-
-
-
-
-'''
-
-NOT INTERESTING FOR NOW
-
-def MEMD_ASR(loaded_session_raw, training_raw_path, cutoff=20, wl=0.5):
-
-    training_raw = mne.io.read_raw(training_raw_path, preload=True)
-    training_end = training_raw.get_data().shape[1] # Need to keep for calibration interval
-
-    # Final raw
-    raw = mne.concatenate_raws([training_raw, loaded_session_raw], preload = True)
-    data = raw.get_data().T
-    
-    sf = raw.info['sfreq']
-    interval = [0, training_end/sf]
-    
-    # Add flipped end
-    data = np.array(data)
-    end_flipped = np.flip(data[-int(wl*sf):,:], axis = 0)
-    data = np.concatenate((data, end_flipped), axis = 0)
-    
-    # Number of components
-    directions = 2 * (data.shape[1] + 1)
-    
-    #MEMD
-    imf = memd(data, directions)
-    
-    # Thresholds
-    amplitude_boundaries = []
-    for ch in range(data.shape[1]):
-        q90, q10 = np.percentile(data[:,ch], [90 ,10])
-        iqr = q90 - q10
-        amplitude_boundaries.append(iqr)
-    amplitude_boundaries
-    
-    # Threshold matrix
-    threshold_matrix = np.zeros((imf.shape[0], imf.shape[1]))
-    for ch in range(imf.shape[1]):
-        amplitude_threshold = (np.percentile(data[:,ch], 90) - np.percentile(data[:,ch], 10))/10
-        threshold_matrix[:,ch]=amplitude_threshold
-    
-    # Interquartile matrix
-    iqr_matrix = np.zeros((imf.shape[0], imf.shape[1]))
-    for ch in range(imf.shape[1]):
-        for im in range(imf.shape[0]):
-            iqr = np.percentile(imf[im,ch,:], 90) - np.percentile(imf[im,ch,:], 10)
-            iqr_matrix[im,ch] = iqr
-    
-    # Search the low and high idx
-    bool_matrix = iqr_matrix > threshold_matrix
-    is_higher = np.all(bool_matrix, axis = 1)
-    low_idx = np.where(is_higher == False)[0]
-    high_idx = np.where(is_higher == True)[0]
-    
-    # Search the closest match
-    mean = iqr_matrix.mean(axis = 1)
-    mean[low_idx] = 1.
-    closest_imf_idx = mean.argmin()
-    
-    # Summing up
-    for low in low_idx :
-        imf[closest_imf_idx,:,:] = imf[closest_imf_idx,:,:] + imf[low,:,:]
-        
-    # Reject low imf
-    good_imf = imf[high_idx,:,:]
-
-'''
-
-#> def stats_thresholds_cleaning
-
-
-## ERP
 

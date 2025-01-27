@@ -1,8 +1,11 @@
 # Packages
 
 import numpy as np
-
+import pandas as pd
 import matplotlib.pyplot as plt
+
+import copy
+
 
 
 # Modules
@@ -200,6 +203,164 @@ def plot_evoked_Go_NoGo(by_sub_dict, parameters):
                 #except:
                 #        pass
 
+    return processing
+
+def PSD_mean_by_condition(main_dict, parameters):
+    
+    processing = {'PSD_mean_by_condition' : {}}
+    
+    # Scrap parameters
+    
+    # Create view of the data
+    view_conditions = ({'type' : 'cleaning',
+                        'method' : 'compare',
+                        'conditions' : {'default' : lambda cleaning : True}},
+                        {'type' : 'sub',
+                        'method' : 'aggregate',
+                        'conditions' : {'SART' : lambda sub : 'task-sart' in sub,
+                                        'work' : lambda sub : 'task-work' in sub,
+                                        'lab-meeting' : lambda sub : 'task-lm' in sub,
+                                        'class' : lambda sub : 'task-class' in sub}},
+                        {'type' : 'extract',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda extract : 'epochs_probe' == extract}},
+                        {'type' : 'analysis',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda analysis : 'PSD' == analysis}},
+                        {'type' : 'plot',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda plot : 'data' == plot}})
+    
+    view_dict = create_view_dict(main_dict, view_conditions)
+    
+    for cleaning_key, conditions_dict in view_dict.items():
+        
+        processing['PSD_mean_by_condition'][cleaning_key] = {}
+        
+        for condition_key, array_list in conditions_dict.items():
+            
+            data = np.concatenate(array_list)
+            
+            n_epochs = data.shape[0]
+            
+            # PSD mean
+            
+            ch = ['Fp1','Fp2','Fz','Cz','Pz','O1','O2']
+            
+            data = np.log10(data)
+
+            ndim = data.ndim
+            if ndim == 3:
+                data_std = np.std(data, axis=0)
+                data = np.mean(data, axis=0)
+            
+            fig, ax = plt.subplots(
+                nrows=1, ncols=1, figsize=(12, 12), layout = "constrained")
+            
+            freqs = np.linspace(0.5, 40, 80)
+            for i in range(data.shape[0]):
+                ax.plot(freqs, np.array(data[i]).T, label = ch[i], alpha = .8)
+                if ndim == 3 :
+                    ax.fill_between(freqs, data[i] - data_std[i], data[i] + data_std[i], alpha = .1)
+            
+            # Set the title and labels
+            ax.set_title(f'PSD {condition_key} ({cleaning_key} : n = {n_epochs})', fontsize=20)
+            ax.set_xlabel('Frequency (Hz)', fontsize=20)
+            ax.set_ylabel('(dB)', fontsize=30) # this is dB
+            ax.set_xlim([0.5, 40])
+            
+            # ax.set_ylim([-30, 60])
+            ax.legend()
+            
+            # Show the plot
+            plt.legend(prop={'size':20})
+            plt.close()
+            
+            # Send the plot
+            processing['PSD_mean_by_condition'][cleaning_key][condition_key] = fig
+            
+    return processing
+
+def BP_probes_mean_by_condition(main_dict, parameters):
+    
+    processing = {'BP_probes_mean_by_condition' : {}}
+    
+    # Scrap parameters
+    
+    # Create view of the data
+    view_conditions = ({'type' : 'cleaning',
+                        'method' : 'compare',
+                        'conditions' : {'default' : lambda cleaning : True}},
+                        {'type' : 'sub',
+                        'method' : 'aggregate',
+                        'conditions' : {'SART' : lambda sub : 'task-sart' in sub,
+                                        'work' : lambda sub : 'task-work' in sub,
+                                        'lab-meeting' : lambda sub : 'task-lm' in sub,
+                                        'class' : lambda sub : 'task-class' in sub}},
+                        {'type' : 'extract',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda extract : 'epochs_probe' == extract}},
+                        {'type' : 'analysis',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda analysis : 'BP' == analysis}},
+                        {'type' : 'plot',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda plot : 'data' == plot}})
+    
+    view_dict = create_view_dict(main_dict, view_conditions)
+    
+    for cleaning_key, conditions_dict in view_dict.items():
+        
+        processing['BP_mean_by_condition'][cleaning_key] = {}
+        
+        for condition_key, df_list in conditions_dict.items():
+            
+            data = pd.concat(df_list, keys=range(len(df_list)))
+
+            mean_df = data.groupby(level=1).mean()
+            
+            processing['BP_mean_by_condition'][cleaning_key][condition_key] = mean_df
+    
+    return processing
+
+def BP_RS_mean_comparison(main_dict, parameters):
+    
+    processing = {'BP_RS_mean_comparison' : {}}
+    
+    # Scrap parameters
+    
+    # Create view of the data
+    view_conditions = ({'type' : 'cleaning',
+                        'method' : 'compare',
+                        'conditions' : {'default' : lambda cleaning : True}},
+                        {'type' : 'sub',
+                        'method' : 'aggregate',
+                        'conditions' : {'SART' : lambda sub : 'task-sart' in sub,
+                                        'work' : lambda sub : 'task-work' in sub}},
+                        {'type' : 'extract',
+                        'method' : 'compare',
+                        'conditions' : {'default' : lambda extract : 'RS' in extract}},
+                        {'type' : 'analysis',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda analysis : 'BP' == analysis}},
+                        {'type' : 'plot',
+                        'method' : 'compress',
+                        'conditions' : {'default' : lambda plot : 'data' == plot}})
+    
+    view_dict = create_view_dict(main_dict, view_conditions)
+    
+    for cleaning_key, conditions_dict in view_dict.items():
+        
+        processing['BP_mean_by_condition'][cleaning_key] = {}
+        
+        for condition_key, df_list in conditions_dict.items():
+            
+            data = pd.concat(df_list, keys=range(len(df_list)))
+
+            mean_df = data.groupby(level=1).mean()
+            
+            processing['BP_mean_by_condition'][cleaning_key][condition_key] = mean_df
+    
     return processing
 
 

@@ -1,5 +1,6 @@
 # Packages
 
+import _A_Preprocessing as _A_
 import _E_Plot as _E_
 
 import copy
@@ -20,18 +21,19 @@ def plot(data, parameters, info):
 
 def dict_plotting(main_dict, parameters, conditions):
 
-    for sub in main_dict.keys():
-        for extract in main_dict[sub].keys():
-            for method in main_dict[sub][extract].keys():
-                for analysis in main_dict[sub][extract][method].keys():
+    for rec in main_dict.keys():
+        for extract in main_dict[rec].keys():
+            for method in main_dict[rec][extract].keys():
+                for analysis in main_dict[rec][extract][method].keys():
                     
-                    info = {'sub' : sub, 'extract' : extract, 'method' : method, 'analysis' : analysis}
+                    info = {'rec' : rec, 'extract' : extract, 'method' : method, 'analysis' : analysis}
+                    info.update(_A_.extract_info_from_rec_name(rec))
                     conditions_check_dict = {key: func(info) for key, func in conditions.items()}
                     
                     for name, condition in conditions_check_dict.items() :
                         if condition == True :
-                            data = main_dict[sub][extract][method][analysis]['data']
-                            main_dict[sub][extract][method][analysis].update(plot(data, parameters=parameters[name], info=info))
+                            data = main_dict[rec][extract][method][analysis]['data']
+                            main_dict[rec][extract][method][analysis].update(plot(data, parameters=parameters[name], info=info))
                         
     return main_dict
 

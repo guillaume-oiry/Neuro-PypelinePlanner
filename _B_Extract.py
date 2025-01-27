@@ -4,17 +4,47 @@
 # Packages
 
 import mne
-
+import pandas as pd
+import copy
 
 # Modules
 
-def get_raw_crops(data, parameters, info):
+def get_raw_crops_general(data, parameters, info):
+    
+    extract = {}
+    
+    #Scrap parameters
+    timings_dict = parameters['TIMINGS_DICT']
+    if isinstance(timings_dict, dict):
+        timings_dict = parameters['TIMINGS_DICT']
+    else :
+        timings_dict = get_timings_dict(data)
+    
+    for name in timings_dict.keys() :
+        
+        data_copy = data.copy()
+        
+        if isinstance(timings_dict[name][0], float):
+            crop = data_copy.crop(tmin = timings_dict[name][0],
+                                 tmax = timings_dict[name][1])
+        elif isinstance(timings_dict[name][0], int):
+            crop = data_copy.crop(tmin = data.annotations.onset[timings_dict[name][0]],
+                                 tmax = data.annotations.onset[timings_dict[name][1]])
+        else:
+            crop = data_copy.crop(tmin = timings_dict[name][0](data),
+                                 tmax = timings_dict[name][1](data))
+        
+        extract[f'raw_{name}'] = {'no_cleaning':{'no_analysis' : {'data' : crop}}}
+
+    return extract
+
+def get_raw_crops_specific(data, parameters, info):
     
     extract = {}
     
     #Scrap parameters
     if isinstance(timings_dict, dict):
-        timings_dict = parameters['TIMINGS_DICT'][info['sub']]
+        timings_dict = parameters['TIMINGS_DICT'][info['rec']]
     else :
         timings_dict = get_timings_dict(data)
     
@@ -42,6 +72,8 @@ def simple_epoching(data, parameters, info):
     tmax=parameters['TMAX']
     ptp_threshold=parameters['PTP_THRESHOLD']
     reject_flat=parameters['REJECT_FLAT']
+    main_path=parameters['MAIN_PATH']
+    add_df=parameters['ADD_DF']
 
     #display_annotations(data)
     
@@ -58,7 +90,11 @@ def simple_epoching(data, parameters, info):
         flat=dict(eeg=1e-6) if reject_flat == True else None,
         preload = True
         )
+
+    if add_df == True :
+        epochs.metadata = pd.read_csv(f'{main_path}/DATA/{info['rec'].replace('_eeg.fif', '_behav.csv')}', index_col=[0]).reset_index(drop=True)
     
+    # RESET INDEX
     extract['epochs'] = {'no_cleaning':{'no_analysis' : {'data' : epochs}}}
     
     return extract
@@ -72,6 +108,8 @@ def subset_epoching(data, parameters, info):
     tmax = parameters['TMAX']
     ptp_threshold = parameters['PTP_THRESHOLD']
     reject_flat = parameters['REJECT_FLAT']
+    main_path = '/home/guillaume/Documents/Database/Dataset v4'
+    add_df = parameters['ADD_DF']
     labels = parameters['LABELS']
     
     events, event_id = mne.events_from_annotations(data)
@@ -90,10 +128,13 @@ def subset_epoching(data, parameters, info):
         )
     
     bad_epochs = epochs.drop_log
-    print(bad_epochs)
     
     for label_name, label in labels.items():
-        extract[f'epochs_{label_name}'] = {'no_cleaning':{'no_analysis' : {'data' : epochs[label].copy()}}}
+        epochs_extract = epochs[label].copy()
+        if add_df == True :
+            epochs_extract.metadata = pd.read_csv(f'{main_path}/DATA/{info['rec'].replace('_eeg', '_behav.csv')}', index_col=[0]).reset_index(drop=True)
+        # RESET INDEX
+        extract[f'epochs_{label_name}'] = {'no_cleaning':{'no_analysis' : {'data' : epochs_extract}}}
     
     return extract
 
@@ -106,7 +147,9 @@ def manual_epoching(data, parameters, info):
     tmax=parameters['TMAX']
     ptp_threshold=parameters['PTP_THRESHOLD']
     reject_flat=parameters['REJECT_FLAT']
-    timings_dict = parameters['TIMINGS_DICT'][info['sub']]
+    main_path=parameters['MAIN_PATH']
+    add_df=parameters['ADD_DF']
+    timings_dict = parameters['TIMINGS_DICT'][info['rec']]
     
     events, event_id = mne.events_from_annotations(data)
 
@@ -127,10 +170,33 @@ def manual_epoching(data, parameters, info):
     else :
         timings_dict = get_timings_dict(data)
     
+    if add_df == True :
+        epochs.metadata = pd.read_csv(f'{main_path}/DATA/{info['rec'].replace('_eeg.fif', '_behav.csv')}', index_col=[0]).reset_index(drop=True)
+    
     for label_name, interval in timings_dict.items():
         
         selected_epochs = epochs[int(interval[0]):int(interval[1])+1].copy()
+        # RESET INDEX
         extract[f'epochs_{label_name}'] = {'no_cleaning':{'no_analysis' : {'data' : selected_epochs.copy()}}}
+    
+    return extract
+
+def get_RS_crops(data, parameters, info):
+    
+    extract = {}
+    
+    if len(data.annotations.onset[data.annotations.description == 'RS']) == 2 :
+        
+        RS1_data_copy = copy.deepcopy(data)
+        RS1_crop = RS1_data_copy.crop(tmax = data.annotations.onset[data.annotations.description == 'RS'][0])
+        extract[f'raw_RS1'] = {'no_cleaning':{'no_analysis' : {'data' : RS1_crop}}}
+        
+        RS2_data_copy = copy.deepcopy(data)
+        RS2_crop = RS2_data_copy.crop(tmin = data.annotations.onset[data.annotations.description == 'RS'][1])
+        extract[f'raw_RS2'] = {'no_cleaning':{'no_analysis' : {'data' : RS2_crop}}}
+    
+    else :
+        pass
     
     return extract
 

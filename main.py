@@ -76,7 +76,22 @@ ANALYZE_CONDITIONS = {'raw' : lambda info : 'raw' in info['extract'],
 
 ANALYZE_PARAMETERS = {'raw' : {'PSD_data' : {'BP' : True}},
                       'epochs' : {'PSD_data' : {'BP' : True},
-                                  'ERP_data' : {}}}
+                                  'ERP_data' : {},
+                                  'SW_detect' : {'GET_SW' : True,
+                                                 'FILTER_RANGE' : [0.2, 7], #in Hz
+                                                 'THRESHOLD' : 0.1,
+                                                 'NEW_SFREQ' : 100,
+                                                 'LOCATION_DICT' : {'Fp1' : 'Frontal',
+                                                                    'Fp2' : 'Frontal',
+                                                                    'Fz' : 'Frontal',
+                                                                    'Cz' : 'Central',
+                                                                    'Pz' : 'Central',
+                                                                    'O1' : 'Occipital',
+                                                                    'O2' : 'Occipital'}
+                                                 }
+                                  }
+                      }
+
 
 
 ## 5_PLOT
