@@ -58,17 +58,17 @@ def pipeline(file_path_list, parameters):
         if isinstance(value, dict):
             return unnest_data(value)
         return value
-
+    
     def preprocessing():
         main_dict = {}
+        preprocessing_options = parameters['preprocessing'].values()
         for file_path in file_path_list:
-            for option in parameters['preprocessing'].values():
-                if option['CONDITION'](file_path):
-                    for function, parameters in option['PARAMETERS'].items():
-                        preprocessing_function = getattr(_A_Preprocessing, function)
-                        raw = preprocessing_function(file_path, parameters=parameters, info=file_path)
-                        main_dict[file_path] = nest_data(parameters['processing'].keys(), raw)
-                    break
+            option = [opt['PARAMETERS'] for opt in preprocessing_options if opt['CONDITIONS'](file_path)][0]
+            function = option[*option.keys()]
+            parameters = option[function]
+            preprocessing_function = getattr(_A_Preprocessing, function)
+            raw = preprocessing_function(file_path, parameters=parameters, info=file_path)
+            main_dict[file_path] = nest_data(parameters['processing'].keys(), raw)
         return main_dict
 
     def processing(main_dict, steps = parameters['processing'].keys(), info = {}):
@@ -77,17 +77,15 @@ def pipeline(file_path_list, parameters):
             return main_dict
 
         step = steps[0]
-        step_parameters = parameters['processing'][step]
+        processing_step_options = parameters['processing'][step].values()
         for key in main_dict.keys():
             info.update({step : key})
-            for option in step_parameters.values():
-                if option['CONDITION'](info):
-                    for function, kwargs in option['PARAMETERS'].items():
-                        step_function = getattr(step, function)
-                        datas = step_function(unnest_data(main_dict[key]), info, **kwargs) # returned data should be a dict with {label : data, [...]}
-                        for label, data in datas.items():
-                            main_dict[key][label].update(nest_data(steps = steps[1:], data = data))
-                    break
+            option = [opt['PARAMETERS'] for opt in processing_step_options if opt['CONDITIONS'](info)][0]
+            for function, kwargs in option['PARAMETERS'].items():
+                step_function = getattr(step, function)
+                datas = step_function(unnest_data(main_dict[key]), info, **kwargs) # returned data should be a dict with {label : data, [...]}
+                for label, data in datas.items():
+                    main_dict[key][label].update(nest_data(steps = steps[1:], data = data))
         return processing(main_dict[key], steps[1:], info = info)
 
     def postprocessing(main_dict, processing_steps = parameters['processing'].keys(), schemes = parameters['postprocessing']):
@@ -120,4 +118,5 @@ def pipeline(file_path_list, parameters):
         return postprocessing_dict
 
     return preprocessing, processing, postprocessing
+
 
