@@ -6,7 +6,7 @@ So here is my solution : **a meta-pipeline that organizes itself**. All the layo
 
 I'm pretty sure something like this already exists in some corner of github but at least I learned a lot in the process, and I hope my way of solving this problem could be helpful to other junior engineers like me.
 
-DISCLAIMER : This is WORK IN PROGRESS. (in what minimal case is it functional ?) [list of important features to make it minimally complete] 
+DISCLAIMER : This is WORK IN PROGRESS.
 
 NOTE : The multiprocessing part only works on Linux systems. I may switch to the *spawn* multiprocessing method in the future to make it work on Windows and MACOS too.
 
