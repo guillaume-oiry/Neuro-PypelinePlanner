@@ -29,7 +29,10 @@ PARAMETERS = {'preprocessing' : {'all' : {'CONDITION' : lambda file_path : 'task
                                             }
                               },
               'postprocessing' : {'psd_mean' : {},
-                                  {'psd_mean' : {}
-                                   }
+                                  'psd_mean' : {},
+                                  'psd_mean' : {},
+                                  'psd_mean' : {},
+                                  'psd_mean' : {},
+                                  'psd_mean' : {}
                                   }
               }

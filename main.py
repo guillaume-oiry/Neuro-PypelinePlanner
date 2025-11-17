@@ -7,9 +7,9 @@ import multiprocessing
 import time
 
 
-def main(file_path_list, parameters, mp = True):
+def main(file_path_list, parameters):
 
-    def preprocessing(mp):
+    def preprocessing(mp = True):
 
         print("starting preprocessing")
 
@@ -53,12 +53,11 @@ def main(file_path_list, parameters, mp = True):
 
             for p in mp_list:
                 p.join()
-
-        print(f"DICT : {preprocessing_dict}")
+                p.close()
 
         return preprocessing_dict
 
-    def processing(main_dict, steps = list(parameters['processing'].keys()), nstep = 0, info = {}, mp):
+    def processing(main_dict, steps = list(parameters['processing'].keys()), nstep = 0, info = {}, mp = True):
 
         print("starting processing")
 
@@ -72,7 +71,6 @@ def main(file_path_list, parameters, mp = True):
         step_module = getattr(modules, step)
         processing_step_options = parameters['processing'][step]
         for key in main_dict.keys():
-            # MP
             if nstep == 0:
                 info['file_name'] = key
             else:
@@ -92,19 +90,42 @@ def main(file_path_list, parameters, mp = True):
                     main_dict[key].update({label : nest_data(steps = steps[nstep+1:], data = data)})
             processing(main_dict[key], steps, nstep = nstep+1, info = info)
 
-    def postprocessing(processing_dict, parameters, mp):
+    def postprocessing(processing_dict, parameters, mp = True):
 
         print("starting postprocessing")
 
         postprocessing_dict = {}
-
         postprocessing_parameters = parameters['postprocessing']
 
+        if mp:
+            q = multiprocessing.Queue()
+            mp_list = []
+            def mp_postprocess(q, postprocessing_function, parameters, kwargs, function):
+                data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
+                q.put((function, data))
+
         for function, kwargs in postprocessing_parameters.items():
-            # MP
+
             postprocessing_function = getattr(modules.postprocessing_functions, function)
-            data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-            postprocessing_dict[function] = data
+            #data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
+
+            if mp:
+                process = multiprocessing.Process(target=mp_postprocess, args=(q, postprocessing_function, parameters, kwargs, function))
+                process.start()
+                mp_list.append(process)
+            else:
+                data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
+                postprocessing_dict[function] = data
+
+        if mp:
+
+            for _ in mp_list:
+                function, data = q.get()
+                postprocessing_dict[function] = data
+
+            for p in mp_list:
+                p.join()
+                p.close()
 
         return postprocessing_dict
 
@@ -166,13 +187,39 @@ def main(file_path_list, parameters, mp = True):
 
 
 if __name__ == "__main__":
+
     #multiprocessing.set_start_method('spawn')
+
     file_path_list = glob.glob("DATA/*.fif")
-    start = time.perf_counter()
-    preprocessing, processing, postprocessing = main(file_path_list = file_path_list, parameters = PARAMETERS, mp = True)
-    processing_dict = preprocessing()
-    #processing(main_dict = processing_dict, steps = list(PARAMETERS['processing'].keys()), nstep = 0, info = {})
-    #postprocessing_dict = postprocessing(processing_dict = processing_dict, parameters = PARAMETERS)
-    end = time.perf_counter()
-    print(f"duration : {end-start}")
+
+    preprocessing, processing, postprocessing = main(file_path_list = file_path_list, parameters = PARAMETERS)
+
+    stats = []
+
+    for mp in [True, False]:
+        start_global = time.perf_counter()
+
+        start_preprocessing = time.perf_counter()
+        processing_dict = preprocessing(mp = mp)
+        end_preprocessing = time.perf_counter()
+        duration_preprocessing = end_preprocessing - start_preprocessing
+
+        start_processing = time.perf_counter()
+        processing(main_dict = processing_dict, steps = list(PARAMETERS['processing'].keys()), nstep = 0, info = {}, mp = mp)
+        end_processing = time.perf_counter()
+        duration_processing = end_processing - start_processing
+
+        start_postprocessing = time.perf_counter()
+        postprocessing_dict = postprocessing(processing_dict = processing_dict, parameters = PARAMETERS, mp = mp)
+        end_postprocessing = time.perf_counter()
+        duration_postprocessing = end_postprocessing - start_postprocessing
+
+        end_global = time.perf_counter()
+        duration_global = end_global - start_global
+
+        stat = f"MP {mp} : {duration_global}\n - preprocessing : {duration_preprocessing}\n - processing : {duration_processing}\n - postprocessing : {duration_postprocessing}\n"
+        stats.append(stat)
+
+    for s in stats:
+        print(s)
 
