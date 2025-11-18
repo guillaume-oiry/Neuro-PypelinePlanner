@@ -14,7 +14,7 @@ preprocessing_parameters = {'all' : {'CONDITION' : lambda file_path : 'task-sart
                                             }
                                  }
 
-processing_parameters = {'extraction' : {'all' : {'CONDITIONS' : lambda info : True,
+processing_parameters = {'extraction' : {'all' : {'CONDITION' : lambda info : True,
                                                        'PARAMETERS' : {'subset_epoching' : {'tmin' : -20,
                                                                                             'tmax' : 0,
                                                                                             'ptp_threshold' : None,
@@ -25,7 +25,7 @@ processing_parameters = {'extraction' : {'all' : {'CONDITIONS' : lambda info : T
                                                                        }
                                                        }
                                               },
-                              'analysis' : {'epochs' : {'CONDITIONS' : lambda info : 'epochs' in info['extraction'],
+                              'analysis' : {'epochs' : {'CONDITION' : lambda info : 'epochs' in info['extraction'],
                                                         'PARAMETERS' : {'psd_data' : {'bp' : False}
                                                                         }
                                                         }
