@@ -34,11 +34,8 @@ processing_parameters = {'extraction' : {'all' : {'CONDITION' : lambda info : Tr
 
 postprocesssing_parameters = {'psd_mean' : {},
                                   'psd_mean' : {},
-                                  'psd_mean' : {},
-                                  'psd_mean' : {},
-                                  'psd_mean' : {},
                                   'psd_mean' : {}
-                                  }
+                              }
 
 PARAMETERS = {'preprocessing' : preprocessing_parameters,
               'processing' : processing_parameters,

@@ -10,10 +10,12 @@ def main(file_path_list, parameters, apply_multiprocessing = True):
     if apply_multiprocessing:
         preprocessing_dict = preprocessing_mp(file_path_list, parameters)
         processing_dict = processing_mp(preprocessing_dict, parameters)
+        postprocessing_dict = postprocessing_mp(copy.deepcopy(processing_dict), parameters)
     else:
         preprocessing_dict = preprocessing(file_path_list, parameters)
         processing_dict = processing(preprocessing_dict, parameters)
-    return processing_dict
+        postprocessing_dict = postprocessing_mp(copy.deepcopy(processing_dict), parameters)
+    return postprocessing_dict
 
 def preprocessing(file_path_list, parameters):
 
@@ -138,10 +140,66 @@ def rec_processing(individual_dict, parameters, steps, nstep = 0, info = {}):
 
     return individual_dict
 
+def postprocessing(processing_dict, parameters):
+
+    postprocessing_dict = {}
+    postprocessing_parameters = parameters['postprocessing']
+    
+    functions = get_functions_with_args(info = None,
+                                parameters = parameters['postprocessing'],
+                                step = 'postprocessing',
+                                step_module = modules.postprocessing_functions)
+
+    for f in functions:
+        function, kwargs = f
+        data = function(copy.deepcopy(processing_dict), parameters, **kwargs)
+        postprocessing_dict[function.__name__] = data
+
+    return postprocessing_dict
+
+def postprocessing_mp(processing_dict, parameters):
+
+    postprocessing_dict = {}
+
+    functions = get_functions_with_args(info = None,
+                                parameters = parameters['postprocessing'],
+                                step = 'postprocessing',
+                                step_module = modules.postprocessing_functions)
+
+    q = multiprocessing.Queue()
+    mp_list = []
+
+    for f in functions:
+        function, kwargs = f
+        process = multiprocessing.Process(target=postprocess_mp, args=(q, function, processing_dict, parameters, kwargs))
+        process.start()
+        mp_list.append(process)
+
+    for _ in mp_list:
+        function, data = q.get()
+        postprocessing_dict[function.__name__] = data
+
+    for p in mp_list:
+        p.join()
+        #p.close()
+
+    return postprocessing_dict
+
+def postprocess_mp(q, function, processing_dict, parameters, kwargs):
+    data = function(copy.deepcopy(processing_dict), parameters, **kwargs)
+    q.put((function, data))
+
 def get_functions_with_args(info, parameters, step, step_module):
 
-    options = [opt['PARAMETERS'] for opt in parameters.values() if opt['CONDITION'](info)]
+    functions = []
 
+    if step == 'postprocessing':
+        for function_name, kwargs in parameters.items():
+            function = getattr(step_module, function_name)
+            functions.append((function, kwargs))
+        return functions
+
+    options = [opt['PARAMETERS'] for opt in parameters.values() if opt['CONDITION'](info)]
     if len(options) == 0 : # We don't permit to ignore any file of the query on the preprocessing step, but it's not a problem for the processing step.
         if step == 'preprocessing':
             raise Exception(f"No conditions matching for {info}.")
@@ -153,89 +211,11 @@ def get_functions_with_args(info, parameters, step, step_module):
     else :
         option = options[0]
 
-    functions = []
     for function_name, kwargs in option.items():
         function = getattr(step_module, function_name)
         functions.append((function, kwargs))
 
     return functions
-
-'''
-def postprocessing(processing_dict, parameters, apply_multiprocessing = True):
-
-    print("starting postprocessing")
-
-    postprocessing_dict = {}
-    postprocessing_parameters = parameters['postprocessing']
-
-    if apply_multiprocessing:
-        q = multiprocessing.Queue()
-        mp_list = []
-        def mp_postprocess(q, postprocessing_function, parameters, kwargs, function):
-            data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-            q.put((function, data))
-
-    for function, kwargs in postprocessing_parameters.items():
-
-        postprocessing_function = getattr(modules.postprocessing_functions, function)
-        #data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-
-        if apply_multiprocessing:
-            process = multiprocessing.Process(target=mp_postprocess, args=(q, postprocessing_function, parameters, kwargs, function))
-            process.start()
-            mp_list.append(process)
-        else:
-            data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-            postprocessing_dict[function] = data
-
-    if apply_multiprocessing:
-
-        for _ in mp_list:
-            function, data = q.get()
-            postprocessing_dict[function] = data
-
-        for p in mp_list:
-            p.join()
-            p.close()
-
-    return postprocessing_dict
-
-
-    # DRAFT OF ANOTHER APPROACH TO POSTPROCESSING
-
-
-    def postprocessing_scheme(processing_dict, scheme_dict, scheme_steps, scheme_parameters, processing_steps = processing_steps):
-
-        if len(scheme_steps) == 0:
-            return scheme_dict
-
-        step = scheme_steps[0]
-        step_parameters = scheme_parameters[step]
-        for function, kwargs in step_parameters.items():
-            step_function = getattr(step, function)
-            datas = step_function(processing_dict, scheme_dict, **kwargs) # returned data should be a dict with {label : data, [...]}
-            for label, data in datas.items():
-                scheme_dict[step][label].update(data)
-
-        return postprocessing_scheme(processing_dict, scheme_dict, scheme_steps[1:], scheme_parameters, processing_steps)
-
-    for scheme_name, scheme_parameters in schemes.items():
-        scheme_steps = scheme_parameters.keys()
-        postprocessing_dict[scheme_name] = postprocessing_scheme(processing_dict = processing_dict.copy(),
-                                                                    scheme_dict = {},
-                                                                    scheme_steps = scheme_steps.copy(),
-                                                                    scheme_parameters = scheme_parameters.copy(),
-                                                                    processing_steps = processing_steps)
-
-    return postprocessing_dict
-
-def report():
-    pass
-
-def save():
-    pass
-
-'''
 
 def nest_data(steps, data):
     if len(steps) == 0:
@@ -253,40 +233,6 @@ def unnest_data(d):
         return unnest_data(value)
     return value
 
-def compare_timings():
-
-    stats = []
-
-    for mp in [True, False]:
-        start_global = time.perf_counter()
-
-        start_preprocessing = time.perf_counter()
-        processing_dict = preprocessing(mp = mp)
-        end_preprocessing = time.perf_counter()
-        duration_preprocessing = end_preprocessing - start_preprocessing
-
-        start_processing = time.perf_counter()
-        processing_dict = processing(main_dict = processing_dict, steps = list(PARAMETERS['processing'].keys()), nstep = 0, info = {}, mp = mp)
-        print(processing_dict)
-        end_processing = time.perf_counter()
-        duration_processing = end_processing - start_processing
-
-        start_postprocessing = time.perf_counter()
-        postprocessing_dict = postprocessing(processing_dict = processing_dict, parameters = PARAMETERS, mp = mp)
-        end_postprocessing = time.perf_counter()
-        duration_postprocessing = end_postprocessing - start_postprocessing
-
-        end_global = time.perf_counter()
-        duration_global = end_global - start_global
-
-        stat = f"MP {mp} : {duration_global}\n - preprocessing : {duration_preprocessing}\n - processing : {duration_processing}\n - postprocessing : {duration_postprocessing}\n"
-        stats.append(stat)
-
-    for s in stats:
-        print(s)
-
-
-
 if __name__ == "__main__":
     #multiprocessing.set_start_method('spawn')
     file_path_list = glob.glob(data_query)
@@ -294,5 +240,4 @@ if __name__ == "__main__":
     processing_dict_mp = main(file_path_list, parameters = PARAMETERS, apply_multiprocessing = True)
     print(processing_dict)
     print(processing_dict_mp)
-
 
