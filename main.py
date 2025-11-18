@@ -1,11 +1,10 @@
 import modules
-from parameters import PARAMETERS
+from parameters import data_query, PARAMETERS
 import glob
 import warnings
 import copy
 import multiprocessing
 import time
-
 
 def main(file_path_list, parameters):
 
@@ -227,7 +226,7 @@ if __name__ == "__main__":
 
     #multiprocessing.set_start_method('spawn')
 
-    file_path_list = glob.glob("DATA/*.fif")
+    file_path_list = glob.glob(data_query)
 
     preprocessing, processing, postprocessing = main(file_path_list = file_path_list, parameters = PARAMETERS)
 

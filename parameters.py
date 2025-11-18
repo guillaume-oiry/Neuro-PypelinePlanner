@@ -1,4 +1,6 @@
-PARAMETERS = {'preprocessing' : {'all' : {'CONDITION' : lambda file_path : 'task-sart' in file_path,
+data_query = "DATA/*.fif"
+
+preprocessing_parameters = {'all' : {'CONDITION' : lambda file_path : 'task-sart' in file_path,
                                            'PARAMETERS' : {'EPICE_minimal_preprocessing' : {'LOW_FREQ' : 0.1,
                                                                                             'HIGH_FREQ' : 40,
                                                                                             'NOTCH_FILTER' : 50}
@@ -10,8 +12,9 @@ PARAMETERS = {'preprocessing' : {'all' : {'CONDITION' : lambda file_path : 'task
                                                                                             'NOTCH_FILTER' : 50}
                                                             }
                                             }
-                                 },
-              'processing' : {'extraction' : {'all' : {'CONDITIONS' : lambda info : True,
+                                 }
+
+processing_parameters = {'extraction' : {'all' : {'CONDITIONS' : lambda info : True,
                                                        'PARAMETERS' : {'subset_epoching' : {'tmin' : -20,
                                                                                             'tmax' : 0,
                                                                                             'ptp_threshold' : None,
@@ -27,12 +30,17 @@ PARAMETERS = {'preprocessing' : {'all' : {'CONDITION' : lambda file_path : 'task
                                                                         }
                                                         }
                                             }
-                              },
-              'postprocessing' : {'psd_mean' : {},
+                              }
+
+postprocesssing_parameters = {'psd_mean' : {},
                                   'psd_mean' : {},
                                   'psd_mean' : {},
                                   'psd_mean' : {},
                                   'psd_mean' : {},
                                   'psd_mean' : {}
                                   }
-              }
+
+PARAMETERS = {'preprocessing' : preprocessing_parameters,
+              'processing' : processing_parameters,
+              'postprocessing' : postprocesssing_parameters}
+
