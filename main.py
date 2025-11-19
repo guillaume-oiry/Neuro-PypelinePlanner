@@ -1,262 +1,332 @@
 import modules
-from parameters import data_query, PARAMETERS
+from parameters import DATA_QUERY, PARAMETERS
+
 import glob
-import warnings
 import copy
+import warnings
 import multiprocessing
-import time
-
-def main(file_path_list, parameters):
-
-    def preprocessing(mp = True):
-
-        print("starting preprocessing")
-
-        if mp:
-            q = multiprocessing.Queue()
-            mp_list = []
-            def mp_preprocess(q, preprocessing_function, file_path, parameters, info):
-                data = preprocessing_function(file_path, parameters = kwargs, info=file_path)
-                q.put((file_path, data))
-
-        preprocessing_dict = {}
-        preprocessing_options = parameters['preprocessing'].values()
-
-        for file_path in file_path_list:
-
-            option = [opt['PARAMETERS'] for opt in preprocessing_options if opt['CONDITION'](file_path)]
-            if len(option) == 0 :
-                warnings.warn(f"No conditions matching for {file_path}")
-            elif len(option) > 1 :
-                raise Exception(f"Conditions should be mutually exclusive. {len(option)} conditions matched for {file_path}")
-            else :
-                option = option[0]
-            function = list(option.keys())[0] # so only one preprocessing function by file
-            # need error handling here ?
-            kwargs = option[function]
-            preprocessing_function = getattr(modules.preprocess, function)
-
-            if mp:
-                process = multiprocessing.Process(target=mp_preprocess, args=(q, preprocessing_function, file_path, kwargs, file_path))
-                process.start()
-                mp_list.append(process)
-            else:
-                data = preprocessing_function(file_path, parameters = kwargs, info=file_path)
-                preprocessing_dict[file_path] = nest_data(list(parameters['processing'].keys()), data)
-
-        if mp:
-
-            for _ in mp_list:
-                file_path, data = q.get()
-                preprocessing_dict[file_path] = nest_data(list(parameters["processing"].keys()), data)
-
-            for p in mp_list:
-                p.join()
-                p.close()
-
-        return preprocessing_dict
-
-    def processing(main_dict, steps = list(parameters['processing'].keys()), nstep = 0, info = {}, mp = True):
-
-        print("starting processing")
-        
-        def rec_processing(ind_dict, steps = list(parameters['processing'].keys()), nstep = 0, info = {}):
-
-            if len(steps) == 0:
-                return ind_dict
-
-            if nstep >= len(steps):
-                return ind_dict
-
-            step = steps[nstep]
-            step_module = getattr(modules, step)
-            processing_step_options = parameters['processing'][step]
-            for key in ind_dict.keys():
-                if nstep == 0:
-                    info['file_name'] = key
-                else:
-                    info[steps[nstep-1]] = key
-                option = [opt['PARAMETERS'] for opt in processing_step_options.values() if opt['CONDITIONS'](info)]
-                if len(option) == 0 :
-                    warnings.warn(f"No conditions matching for {key}")
-                    continue
-                elif len(option) > 1 :
-                    raise Exception(f"Conditions should be mutually exclusive. {len(option)} conditions matched for {key}")
-                else :
-                    option = option[0]
-                for function, kwargs in option.items():
-                    step_function = getattr(step_module, function)
-                    datas = step_function(unnest_data(ind_dict[key]), info, **kwargs) # returned data should be a dict with {label : data, [...]}
-                    for label, data in datas.items():
-                        ind_dict[key].update({label : nest_data(steps = steps[nstep+1:], data = data)})
-                rec_processing(ind_dict[key], steps, nstep = nstep+1, info = info)
-            return ind_dict
-
-        if mp:
-            q = multiprocessing.Queue()
-            mp_list = []
-            def mp_process(q, file_path, ind, parameters):
-                ind_dict = rec_processing(ind_dict = {file_path : ind}, steps = list(parameters['processing'].keys()), nstep = 0, info = {})
-                q.put(ind_dict)
-
-        processing_dict = {}
-
-        for file_path, ind in main_dict.items():
-
-            if mp:
-                process = multiprocessing.Process(target=mp_process, args=(q, file_path, ind, parameters))
-                process.start()
-                mp_list.append(process)
-
-            else:
-                ind_dict = rec_processing(ind_dict = {file_path : ind}, steps = list(parameters['processing'].keys()), nstep = 0, info = {})
-                for key, value in ind_dict.items():
-                    processing_dict[key] = value
-
-        if mp:
-
-            for _ in mp_list:
-                ind_dict = q.get()
-                for key, value in ind_dict.items():
-                    processing_dict[key] = value
-
-            for p in mp_list:
-                p.join()
-                #p.close()
-
-        return processing_dict
-
-    def postprocessing(processing_dict, parameters, mp = True):
-
-        print("starting postprocessing")
-
-        postprocessing_dict = {}
-        postprocessing_parameters = parameters['postprocessing']
-
-        if mp:
-            q = multiprocessing.Queue()
-            mp_list = []
-            def mp_postprocess(q, postprocessing_function, parameters, kwargs, function):
-                data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-                q.put((function, data))
-
-        for function, kwargs in postprocessing_parameters.items():
-
-            postprocessing_function = getattr(modules.postprocessing_functions, function)
-            #data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-
-            if mp:
-                process = multiprocessing.Process(target=mp_postprocess, args=(q, postprocessing_function, parameters, kwargs, function))
-                process.start()
-                mp_list.append(process)
-            else:
-                data = postprocessing_function(copy.deepcopy(processing_dict), parameters, **kwargs) # returned data should be a dict with {label : data, [...]}
-                postprocessing_dict[function] = data
-
-        if mp:
-
-            for _ in mp_list:
-                function, data = q.get()
-                postprocessing_dict[function] = data
-
-            for p in mp_list:
-                p.join()
-                p.close()
-
-        return postprocessing_dict
-
-        '''
-
-        # DRAFT OF ANOTHER APPROACH TO POSTPROCESSING
 
 
-        def postprocessing_scheme(processing_dict, scheme_dict, scheme_steps, scheme_parameters, processing_steps = processing_steps):
-
-            if len(scheme_steps) == 0:
-                return scheme_dict
-
-            step = scheme_steps[0]
-            step_parameters = scheme_parameters[step]
-            for function, kwargs in step_parameters.items():
-                step_function = getattr(step, function)
-                datas = step_function(processing_dict, scheme_dict, **kwargs) # returned data should be a dict with {label : data, [...]}
-                for label, data in datas.items():
-                    scheme_dict[step][label].update(data)
-
-            return postprocessing_scheme(processing_dict, scheme_dict, scheme_steps[1:], scheme_parameters, processing_steps)
-
-        for scheme_name, scheme_parameters in schemes.items():
-            scheme_steps = scheme_parameters.keys()
-            postprocessing_dict[scheme_name] = postprocessing_scheme(processing_dict = processing_dict.copy(),
-                                                                     scheme_dict = {},
-                                                                     scheme_steps = scheme_steps.copy(),
-                                                                     scheme_parameters = scheme_parameters.copy(),
-                                                                     processing_steps = processing_steps)
-
-        return postprocessing_dict
-        '''
+def main(file_path_list, parameters, apply_multiprocessing=True):
+    if apply_multiprocessing:
+        preprocessing_dict = preprocessing_mp(file_path_list, parameters)
+        processing_dict = processing_mp(copy.deepcopy(preprocessing_dict), parameters)
+        postprocessing_dict = postprocessing_mp(
+            copy.deepcopy(processing_dict), parameters
+        )
+    else:
+        preprocessing_dict = preprocessing(file_path_list, parameters)
+        processing_dict = processing(copy.deepcopy(preprocessing_dict), parameters)
+        postprocessing_dict = postprocessing_mp(
+            copy.deepcopy(processing_dict), parameters
+        )
+    return preprocessing_dict, processing_dict, postprocessing_dict
 
 
-    def report():
-        pass
+# %% PREPROCESSING STEP
 
-    def save():
-        pass
 
-    def nest_data(steps, data):
-        if len(steps) == 0:
-            return data
-        if len(steps) == 1:
-            return {f"no_{steps[0]}" : data}
-        return {f"no_{steps[0]}" : nest_data(steps[1:], data)}
+def preprocessing(file_path_list, parameters):
 
-    def unnest_data(d):
-        print(list(d.keys()))
-        if len(d.keys()) > 1:
-            raise Exception("There shouldn't be more than one key at this step.")
-        value = d[list(d.keys())[0]]
-        if isinstance(value, dict):
-            return unnest_data(value)
-        return value
+    preprocessing_dict = {}
 
-    return preprocessing, processing, postprocessing
+    for file_path in file_path_list:
+        functions = get_functions_with_args(
+            file_path,
+            parameters=parameters["preprocessing"],
+            step="preprocessing",
+            step_module=modules.preprocess,
+        )
+
+        # In the preprocessing step there is only one preprocessing function allowed by file so we take only the first item.
+        function, kwargs = functions[0]
+
+        data = function(file_path, parameters=kwargs, info=file_path)
+        preprocessing_dict[file_path] = data
+
+    return preprocessing_dict
+
+
+def preprocessing_mp(file_path_list, parameters):
+
+    preprocessing_dict = {}
+
+    q = multiprocessing.Queue()
+    mp_list = []
+
+    for file_path in file_path_list:
+        functions = get_functions_with_args(
+            file_path,
+            parameters=parameters["preprocessing"],
+            step="preprocessing",
+            step_module=modules.preprocess,
+        )
+
+        # In the preprocessing step there is only one preprocessing function allowed by file so we take only the first item.
+        function, kwargs = functions[0]
+
+        process = multiprocessing.Process(
+            target=preprocess_mp, args=(q, file_path, function, kwargs)
+        )
+        process.start()
+        mp_list.append(process)
+
+    for _ in mp_list:
+        file_path, data = q.get()
+        preprocessing_dict[file_path] = data
+
+    for p in mp_list:
+        p.join()
+
+    return preprocessing_dict
+
+
+def preprocess_mp(q, file_path, function, kwargs):
+    data = function(file_path=file_path, parameters=kwargs, info=file_path)
+    q.put((file_path, data))
+
+
+# %% PROCESSING STEP
+
+
+def processing(preprocessing_dict, parameters):
+
+    initial_processing_dict = preprocessing_dict_to_initial_processing_dict(
+        preprocessing_dict, parameters
+    )
+    processing_dict = {}
+
+    for file_path, empty_tree in initial_processing_dict.items():
+        individual_dict = rec_processing(
+            individual_dict={file_path: empty_tree},
+            parameters=parameters,
+            steps=list(parameters["processing"].keys()),
+        )
+        processing_dict.update(individual_dict)
+
+    return processing_dict
+
+
+def processing_mp(preprocessing_dict, parameters):
+
+    initial_processing_dict = preprocessing_dict_to_initial_processing_dict(
+        preprocessing_dict, parameters
+    )
+    processing_dict = {}
+
+    q = multiprocessing.Queue()
+    mp_list = []
+
+    for file_path, empty_tree in initial_processing_dict.items():
+        process = multiprocessing.Process(
+            target=process_mp, args=(q, file_path, empty_tree, parameters)
+        )
+        process.start()
+        mp_list.append(process)
+
+    for _ in mp_list:
+        individual_dict = q.get()
+        processing_dict.update(individual_dict)
+
+    for p in mp_list:
+        p.join()
+
+    return processing_dict
+
+
+def process_mp(q, file_path, empty_tree, parameters):
+    individual_dict = rec_processing(
+        individual_dict={file_path: empty_tree},
+        parameters=parameters,
+        steps=list(parameters["processing"].keys()),
+    )
+    q.put(individual_dict)
+
+
+def preprocessing_dict_to_initial_processing_dict(preprocessing_dict, parameters):
+    initial_processing_dict = {}
+    for file_path, data in preprocessing_dict.items():
+        initial_processing_dict[file_path] = nest_data(
+            list(parameters["processing"].keys()), data
+        )  # Put the preprocessed data at the bottom of the nested processing dict.
+    return initial_processing_dict
+
+
+def rec_processing(individual_dict, parameters, steps, nstep=0, info={}):
+
+    if len(steps) == 0:
+        return individual_dict
+
+    if nstep >= len(steps):
+        return individual_dict
+
+    sub_step = steps[nstep]
+
+    for key in individual_dict.keys():
+
+        if nstep == 0:
+            info["file_name"] = key
+        else:
+            info[steps[nstep - 1]] = key
+
+        functions = get_functions_with_args(
+            info=info,
+            parameters=parameters["processing"][sub_step],
+            step="processing",
+            step_module=getattr(modules, sub_step),
+        )
+
+        for f in functions:
+            function, kwargs = f
+            datas = function(
+                data=unnest_data(individual_dict[key]), info=info, **kwargs
+            )  # Unnest the preprocessed data from the bottom of the dict.
+            for (
+                label,
+                data,
+            ) in datas.items():
+                individual_dict[key].update(
+                    {label: nest_data(steps=steps[nstep + 1 :], data=data)}
+                )  # Put the processed data at the bottom of the nested dict.
+
+        rec_processing(
+            individual_dict[key], parameters, steps, nstep=nstep + 1, info=info
+        )
+
+    return individual_dict
+
+
+# %% POSTPROCESSING STEP
+
+
+def postprocessing(processing_dict, parameters):
+
+    postprocessing_dict = {}
+    postprocessing_parameters = parameters["postprocessing"]
+
+    functions = get_functions_with_args(
+        info=None,
+        parameters=parameters["postprocessing"],
+        step="postprocessing",
+        step_module=modules.postprocessing_functions,
+    )
+
+    for f in functions:
+        function, kwargs = f
+        data = function(copy.deepcopy(processing_dict), parameters, **kwargs)
+        postprocessing_dict[function.__name__] = data
+
+    return postprocessing_dict
+
+
+def postprocessing_mp(processing_dict, parameters):
+
+    postprocessing_dict = {}
+
+    functions = get_functions_with_args(
+        info=None,
+        parameters=parameters["postprocessing"],
+        step="postprocessing",
+        step_module=modules.postprocessing_functions,
+    )
+
+    q = multiprocessing.Queue()
+    mp_list = []
+
+    for f in functions:
+        function, kwargs = f
+        process = multiprocessing.Process(
+            target=postprocess_mp,
+            args=(q, function, processing_dict, parameters, kwargs),
+        )
+        process.start()
+        mp_list.append(process)
+
+    for _ in mp_list:
+        function, data = q.get()
+        postprocessing_dict[function.__name__] = data
+
+    for p in mp_list:
+        p.join()
+
+    return postprocessing_dict
+
+
+def postprocess_mp(q, function, processing_dict, parameters, kwargs):
+    data = function(copy.deepcopy(processing_dict), parameters, **kwargs)
+    q.put((function, data))
+
+
+# %% HELPER FUNCTIONS
+
+
+def get_functions_with_args(info, parameters, step, step_module):
+
+    functions = []
+
+    if step == "postprocessing":
+        for function_name, kwargs in parameters.items():
+            function = getattr(step_module, function_name)
+            functions.append((function, kwargs))
+        return functions
+
+    options = [
+        opt["PARAMETERS"] for opt in parameters.values() if opt["CONDITION"](info)
+    ]
+
+    if (
+        len(options) == 0
+    ):  # We don't permit to ignore any file of the query on the preprocessing step, but it's not a problem for the processing step.
+        if step == "preprocessing":
+            raise Exception(f"No conditions matching for {info}.")
+        elif step == "processing":
+            warnings.warn(f"No conditions matching for {info}.")
+            return []
+
+    elif len(options) > 1:
+        raise Exception(
+            f"Conditions should be mutually exclusive. {len(option)} conditions matched for {info}."
+        )
+
+    else:
+        option = options[0]
+
+    for function_name, kwargs in option.items():
+        function = getattr(step_module, function_name)
+        functions.append((function, kwargs))
+
+    return functions
+
+
+def nest_data(steps, data):
+    if len(steps) == 0:
+        return data
+    if len(steps) == 1:
+        return {f"no_{steps[0]}": data}
+    return {f"no_{steps[0]}": nest_data(steps[1:], data)}
+
+
+def unnest_data(d):
+    if len(d.keys()) > 1:
+        raise Exception("There shouldn't be more than one key at this step.")
+    value = d[list(d.keys())[0]]
+    if isinstance(value, dict):
+        return unnest_data(value)
+    return value
 
 
 if __name__ == "__main__":
 
-    #multiprocessing.set_start_method('spawn')
+    file_path_list = glob.glob(DATA_QUERY)
 
-    file_path_list = glob.glob(data_query)
+    preprocessing_dict, processing_dict, postprocessing_dict = main(
+        file_path_list=file_path_list,
+        parameters=PARAMETERS,
+        apply_multiprocessing=False,
+    )
 
-    preprocessing, processing, postprocessing = main(file_path_list = file_path_list, parameters = PARAMETERS)
-
-    stats = []
-
-    for mp in [True, False]:
-        start_global = time.perf_counter()
-
-        start_preprocessing = time.perf_counter()
-        processing_dict = preprocessing(mp = mp)
-        end_preprocessing = time.perf_counter()
-        duration_preprocessing = end_preprocessing - start_preprocessing
-
-        start_processing = time.perf_counter()
-        processing_dict = processing(main_dict = processing_dict, steps = list(PARAMETERS['processing'].keys()), nstep = 0, info = {}, mp = mp)
-        print(processing_dict)
-        end_processing = time.perf_counter()
-        duration_processing = end_processing - start_processing
-
-        start_postprocessing = time.perf_counter()
-        postprocessing_dict = postprocessing(processing_dict = processing_dict, parameters = PARAMETERS, mp = mp)
-        end_postprocessing = time.perf_counter()
-        duration_postprocessing = end_postprocessing - start_postprocessing
-
-        end_global = time.perf_counter()
-        duration_global = end_global - start_global
-
-        stat = f"MP {mp} : {duration_global}\n - preprocessing : {duration_preprocessing}\n - processing : {duration_processing}\n - postprocessing : {duration_postprocessing}\n"
-        stats.append(stat)
-
-    for s in stats:
-        print(s)
-
+    preprocessing_dict_mp, processing_dict_mp, postprocessing_dict_mp = main(
+        file_path_list=file_path_list,
+        parameters=PARAMETERS,
+        apply_multiprocessing=True,
+    )
