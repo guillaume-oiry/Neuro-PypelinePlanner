@@ -210,7 +210,9 @@ def rec_processing(individual_dict, parameters, steps, nstep=0, info={}):
 def postprocessing(processing_dict, parameters):
 
     postprocessing_dict = {}
-    postprocessing_parameters = parameters["postprocessing"]
+
+    if not 'postprocessing' in parameters.keys():
+        return {}
 
     functions = get_functions_with_args(
         info=None,
@@ -230,7 +232,9 @@ def postprocessing(processing_dict, parameters):
 def postprocessing_mp(processing_dict, parameters):
 
     postprocessing_dict = {}
-    postprocessing_parameters = parameters["postprocessing"]
+
+    if not 'postprocessing' in parameters.keys():
+        return {}
 
     functions = get_functions_with_args(
         info=None,
