@@ -336,4 +336,8 @@ if __name__ == "__main__":
     )
     end = time.perf_counter()
 
+    print(f"PREPROCESSING DICT : {preprocessing_dict}")
+    print(f"PROCESSING DICT : {processing_dict}")
+    print(f"POSTPROCESSING DICT : {postprocessing_dict}")
+
     print(f"duration : {end-start}")
