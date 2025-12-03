@@ -1,5 +1,6 @@
 import glob
 
+
 PATH_LIST = glob.glob("DATA/ds004577/sub-*/ses-*/eeg/*.edf")
 PATH_LIST.append("DATA/ds004577/participants.tsv")
 

@@ -9,3 +9,4 @@ todo.txt
 /RESULTS/
 *.so
 /tests/fake_edf_generator.py
+/playground.ipynb

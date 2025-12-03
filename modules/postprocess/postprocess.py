@@ -1,8 +1,6 @@
 import copy
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import mne
+import pandas as pd import matplotlib.pyplot as plt import mne
 from . import cpp_postprocess
 
 
@@ -97,7 +95,10 @@ def view(processing_dict, parameters, view_parameters):
     return view
 
 
-def create_tree(view_parameters, view={}):
+def create_tree(view_parameters, view=None):
+
+    if view == None:
+        view = {}
 
     # The view dict will be nested at a step only if there are several possible conditions,
     # so only if conditions are registered as a list or a dict of conditions.
@@ -107,6 +108,8 @@ def create_tree(view_parameters, view={}):
         for key, value in view_parameters.items()
         if (isinstance(value, list) or isinstance(value, dict))
     }
+    if not view_parameters:
+        return view
 
     for key, value in view_parameters.items():
 
@@ -126,15 +129,20 @@ def create_tree(view_parameters, view={}):
 
         return view
 
+def fill_tree(processing_dict, view_parameters, steps, nstep=0, view=None, info=None):
 
-def fill_tree(processing_dict, view_parameters, steps, nstep=0, view={}, info={}):
+    if view is None:
+        view = {}
+    if info is None:
+        info = {}
 
     if nstep >= len(steps):
         return
 
     for key, value in processing_dict.items():
 
-        info[steps[nstep]] = key
+        info_copy = info.copy()
+        info_copy[steps[nstep]] = key
 
         # If the value is a dict we are not at the bottom file level yet.
         if type(value) is dict:
@@ -144,16 +152,16 @@ def fill_tree(processing_dict, view_parameters, steps, nstep=0, view={}, info={}
                 steps,
                 nstep=nstep + 1,
                 view=view,
-                info=info,
+                info=info_copy,
             )
 
         else:
             check = True
             path = []
             for step, condition in view_parameters.items():
-                check, path = check_conditions(check, path, step, condition, info)
+                check, path = check_conditions(check, path, step, condition, info_copy)
             if check:
-                view = update_tree(view, path, value)
+                update_tree(view, path, value)
 
     return view
 
@@ -183,17 +191,42 @@ def check_conditions(check, path, step, condition, info):
                 check = False
     return check, path
 
+def update_tree(view, path, value):
+    p = path.copy()
+    current = view
 
+    # descend
+    while len(p) > 1:
+        head = p.pop(0)
+        current = current[head]
+
+    leaf = p[0]
+
+    # If this is the first real value and the node is an empty dict, replace it
+    if isinstance(current[leaf], dict) and not current[leaf]:
+        # Replace empty dict with list containing the new value
+        current[leaf] = [value]
+        return
+
+    # Otherwise proceed normally
+    if isinstance(current[leaf], list):
+        current[leaf].append(value)
+    else:
+        current[leaf] = [current[leaf], value]
+
+
+'''
 def update_tree(view, path, value):
     if len(path) == 0:
-        if type(view[path[0]]) is dict:
+        print(path)
+        if type(view) is dict:
             view = [copy.deepcopy(value)]
-        elif type(view[path[0]]) is list:
+        elif type(view) is list:
             view.append(copy.deepcopy(value))
-        return view
     while len(path) > 1:
         view = view[path.pop(0)]
     if isinstance(view[path[0]], dict):
         view[path.pop(0)] = [copy.deepcopy(value)]
     elif isinstance(view[path[0]], list):
         view[path.pop(0)].append(copy.deepcopy(value))
+'''
