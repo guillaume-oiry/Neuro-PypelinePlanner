@@ -1,5 +1,6 @@
-# PypelinePlanner
+# Neuro-PypelinePlanner
 
+**This is a fork of my PypelinePlanner project to add neuroscience-focused submodules without bloating the original one, which have a more general purpose.** 
 
 ## The skippable intro
 
