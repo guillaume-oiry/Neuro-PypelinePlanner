@@ -94,7 +94,7 @@ def psd_plot(psd, freqs_interval=[0, 40], title=""):
 # CATCH-22
 
 
-def C22_epochs_3D_PCA(processing_dict, parameters, mp=True):
+def C22_epochs_3D_PCA(processing_dict, parameters, n_components=2, mp=True):
 
     # Adjust the view
     view_parameters = {
@@ -115,10 +115,16 @@ def C22_epochs_3D_PCA(processing_dict, parameters, mp=True):
     else:
         df = epochs_C22_df(epochs_list=view_epochs["epochs"], ch_names=ch_names)
 
-    # PCA and 3D plot
-    fig = epochs_C22_PCA_plot(matrix=df.T.values)
+    # PCA compute
+    pca_data = PCA(n_components=n_components).fit_transform(all_df_mt)
 
-    return {"features_df": df, "fig": fig}
+    # PCA figure
+    if n_components in [2, 3]:
+        fig = epochs_C22_PCA_plot(pca_data=pca_data, n_components=n_components)
+        return {"features_df": df, "PCA_data" : pca_data, "PCA_fig": fig}
+    else:
+        return {"features_df": df, "PCA_data" : pca_data}
+
 
 
 def epochs_C22_df(epochs_list, ch_names):
@@ -171,36 +177,55 @@ def compute_C22_features(epoch_data, ch_idx, i, n):
     return r
 
 
-def epochs_C22_PCA_plot(matrix):
-    fig = plt.figure(1, figsize=(8, 6))
-    ax = fig.add_subplot(111, projection="3d", elev=-150, azim=110)
+def epochs_C22_PCA_plot(pca_data, n_components):
 
-    X_reduced = PCA(n_components=3).fit_transform(matrix)
-    scatter = ax.scatter(
-        X_reduced[:, 0],
-        X_reduced[:, 1],
-        X_reduced[:, 2],
-        s=40,
-    )
+    if n_components == 2:
 
-    ax.set(
-        title="First three PCA dimensions",
-        xlabel="1st Eigenvector",
-        ylabel="2nd Eigenvector",
-        zlabel="3rd Eigenvector",
-    )
-    ax.xaxis.set_ticklabels([])
-    ax.yaxis.set_ticklabels([])
-    ax.zaxis.set_ticklabels([])
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111)
 
-    # Add a legend
-    legend1 = ax.legend(
-        scatter.legend_elements()[0],
-        loc="upper right",
-        title="Classes",
-    )
-    ax.add_artist(legend1)
+        ax.scatter(
+            pca_data[:, 0],
+            pca_data[:, 1],
+            s=40,
+        )
 
+        ax.set(
+            title="First two PCA dimensions",
+            xlabel="1st Eigenvector",
+            ylabel="2nd Eigenvector",
+        )
+
+        ax.xaxis.set_ticklabels([])
+        ax.yaxis.set_ticklabels([])
+
+    elif n_components == 3:
+
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection="3d", elev=-150, azim=110)
+
+        ax.scatter(
+            pca_data[:, 0],
+            pca_data[:, 1],
+            pca_data[:, 2],
+            s=40,
+        )
+
+        ax.set(
+            title="First three PCA dimensions",
+            xlabel="1st Eigenvector",
+            ylabel="2nd Eigenvector",
+            zlabel="3rd Eigenvector",
+        )
+
+        ax.xaxis.set_ticklabels([])
+        ax.yaxis.set_ticklabels([])
+        ax.zaxis.set_ticklabels([])
+
+    else:
+        raise ValueError("We can plot only 2 or 3 PCA components.")
+
+    plt.show()
     return fig
 
 
