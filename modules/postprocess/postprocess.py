@@ -5,6 +5,14 @@ import matplotlib.pyplot as plt
 import mne
 from . import cpp_postprocess
 
+import pycatch22
+import os
+from joblib import Parallel, delayed
+import matplotlib.pyplot as plt
+import mpl_toolkits.mplot3d
+from sklearn.decomposition import PCA
+
+
 # PSD MEAN
 
 
@@ -86,7 +94,7 @@ def psd_plot(psd, freqs_interval=[0, 40], title=""):
 # CATCH-22
 
 
-def C22_epochs_3D_PCA(processing_dict, parameters):
+def C22_epochs_3D_PCA(processing_dict, parameters, mp=True):
 
     # Adjust the view
     view_parameters = {
@@ -102,15 +110,18 @@ def C22_epochs_3D_PCA(processing_dict, parameters):
     ch_names = view_epochs["epochs"][1].info[
         "ch_names"
     ]  # The second epochs set have the minimal set of channels
-    df = epochs_C22_df(epochs_list=view_epochs["epochs"], ch_names=ch_names)
+    if mp:
+        df = epochs_C22_df_mt(epochs_list=view_epochs["epochs"], ch_names=ch_names)
+    else:
+        df = epochs_C22_df(epochs_list=view_epochs["epochs"], ch_names=ch_names)
 
     # PCA and 3D plot
     fig = epochs_C22_PCA_plot(matrix=df.T.values)
 
-    return fig
+    return {"features_df": df, "fig": fig}
 
 
-def epochs_C22_df(epochs_list, ch_names, ch_locations=False):
+def epochs_C22_df(epochs_list, ch_names):
     data_dict = {}
     for i, epochs in enumerate(epochs_list):
         for n, epoch in enumerate(epochs):
@@ -123,6 +134,41 @@ def epochs_C22_df(epochs_list, ch_names, ch_locations=False):
             data_dict[f"{i}-{n}"] = pd.Series(results)
     df = pd.DataFrame(data_dict)
     return df
+
+
+def epochs_C22_df_mt(epochs_list, ch_names):
+
+    data_list = []
+
+    for i, epochs in enumerate(epochs_list):
+
+        ch_idx = {}
+        for ch_name in ch_names:
+            ch_idx[ch_name] = epochs.info["ch_names"].index(ch_name)
+
+        threads_to_use = os.cpu_count()
+        results_list = Parallel(n_jobs=threads_to_use)(
+            delayed(compute_C22_features)(epoch_data, ch_idx, i, n)
+            for n, epoch_data in enumerate(epochs)
+        )
+
+        for r in results_list:
+            data_dict.update(r)
+
+    df = pd.DataFrame(data_dict)
+    return df
+
+
+def compute_C22_features(epoch_data, ch_idx, i, n):
+
+    results = {}
+    for ch, ch_name in enumerate(ch_names):
+        signal = epoch_data[ch_idx[ch_name]]
+        result = pycatch22.catch22_all(signal)
+        for f, feature_name in enumerate(result["names"]):
+            results[f"{ch_name}-{feature_name}"] = result["values"][f]
+    r = {f"{i}-{n}": pd.Series(results)}
+    return r
 
 
 def epochs_C22_PCA_plot(matrix):
