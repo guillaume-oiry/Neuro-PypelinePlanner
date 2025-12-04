@@ -1,7 +1,11 @@
 import copy
 import numpy as np
-import pandas as pd import matplotlib.pyplot as plt import mne
+import pandas as pd
+import matplotlib.pyplot as plt
+import mne
 from . import cpp_postprocess
+
+# PSD MEAN
 
 
 def psd_mean(processing_dict, parameters, plot_freqs_interval=[0, 40]):
@@ -23,7 +27,9 @@ def psd_mean(processing_dict, parameters, plot_freqs_interval=[0, 40]):
             "ch_names"
         ]  # All the recordings don't have the same number of channels and this one has the minimal set.
         psd_mean_data = compute_psd_mean(psd_list, ch_picks)
-        psd_mean_plot = psd_plot(psd=psd_mean_data, freqs_interval=plot_freqs_interval, title=f"PSD {label}")
+        psd_mean_plot = psd_plot(
+            psd=psd_mean_data, freqs_interval=plot_freqs_interval, title=f"PSD {label}"
+        )
         postprocessing_data[label] = {"data": psd_mean_data, "plot": psd_mean_plot}
 
     return postprocessing_data
@@ -77,6 +83,84 @@ def psd_plot(psd, freqs_interval=[0, 40], title=""):
     return fig
 
 
+# CATCH-22
+
+
+def C22_epochs_3D_PCA(processing_dict, parameters):
+
+    # Adjust the view
+    view_parameters = {
+        "extraction": {"epochs": lambda info: "epochs" in info["extraction"]}
+    }
+    view_epochs = view(
+        processing_dict=processing_dict,
+        parameters=parameters,
+        view_parameters=view_parameters,
+    )
+
+    # Gather all C22 features of every channel of every epoch
+    ch_names = view_epochs["epochs"][1].info[
+        "ch_names"
+    ]  # The second epochs set have the minimal set of channels
+    df = epochs_C22_df(epochs_list=view_epochs["epochs"], ch_names=ch_names)
+
+    # PCA and 3D plot
+    fig = epochs_C22_PCA_plot(matrix=df.T.values)
+
+    return fig
+
+
+def epochs_C22_df(epochs_list, ch_names, ch_locations=False):
+    data_dict = {}
+    for i, epochs in enumerate(epochs_list):
+        for n, epoch in enumerate(epochs):
+            results = {}
+            for ch_name in ch_names:
+                signal = copy.deepcopy(epoch[epochs.info["ch_names"].index(ch_name)])
+                result = pycatch22.catch22_all(signal)
+                for f, feature_name in enumerate(result["names"]):
+                    results[f"{ch_name}-{feature_name}"] = result["values"][f]
+            data_dict[f"{i}-{n}"] = pd.Series(results)
+    df = pd.DataFrame(data_dict)
+    return df
+
+
+def epochs_C22_PCA_plot(matrix):
+    fig = plt.figure(1, figsize=(8, 6))
+    ax = fig.add_subplot(111, projection="3d", elev=-150, azim=110)
+
+    X_reduced = PCA(n_components=3).fit_transform(matrix)
+    scatter = ax.scatter(
+        X_reduced[:, 0],
+        X_reduced[:, 1],
+        X_reduced[:, 2],
+        s=40,
+    )
+
+    ax.set(
+        title="First three PCA dimensions",
+        xlabel="1st Eigenvector",
+        ylabel="2nd Eigenvector",
+        zlabel="3rd Eigenvector",
+    )
+    ax.xaxis.set_ticklabels([])
+    ax.yaxis.set_ticklabels([])
+    ax.zaxis.set_ticklabels([])
+
+    # Add a legend
+    legend1 = ax.legend(
+        scatter.legend_elements()[0],
+        loc="upper right",
+        title="Classes",
+    )
+    ax.add_artist(legend1)
+
+    return fig
+
+
+# VIEW HELPER FUNCTION
+
+
 def view(processing_dict, parameters, view_parameters):
 
     # 1 - Create the tree of the view dictionnary
@@ -128,6 +212,7 @@ def create_tree(view_parameters, view=None):
                 create_tree(next_view_parameters, view[c])
 
         return view
+
 
 def fill_tree(processing_dict, view_parameters, steps, nstep=0, view=None, info=None):
 
@@ -191,6 +276,7 @@ def check_conditions(check, path, step, condition, info):
                 check = False
     return check, path
 
+
 def update_tree(view, path, value):
     p = path.copy()
     current = view
@@ -215,7 +301,7 @@ def update_tree(view, path, value):
         current[leaf] = [current[leaf], value]
 
 
-'''
+"""
 def update_tree(view, path, value):
     if len(path) == 0:
         print(path)
@@ -229,4 +315,4 @@ def update_tree(view, path, value):
         view[path.pop(0)] = [copy.deepcopy(value)]
     elif isinstance(view[path[0]], list):
         view[path.pop(0)].append(copy.deepcopy(value))
-'''
+"""
