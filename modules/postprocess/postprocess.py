@@ -116,7 +116,7 @@ def C22_epochs_3D_PCA(processing_dict, parameters, n_components=2, mp=True):
         df = epochs_C22_df(epochs_list=view_epochs["epochs"], ch_names=ch_names)
 
     # PCA compute
-    pca_data = PCA(n_components=n_components).fit_transform(all_df_mt)
+    pca_data = PCA(n_components=n_components).fit_transform(all_df_mt.T)
 
     # PCA figure
     if n_components in [2, 3]:
