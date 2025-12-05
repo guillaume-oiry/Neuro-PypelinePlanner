@@ -144,7 +144,7 @@ def epochs_C22_df(epochs_list, ch_names):
 
 def epochs_C22_df_mt(epochs_list, ch_names):
 
-    data_list = []
+    data_dict = {}
 
     for i, epochs in enumerate(epochs_list):
 
